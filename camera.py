@@ -43,7 +43,7 @@ hist_brow_raise = deque(maxlen=WIN)
 
 # ------------- Thresholds (tune if needed) -------------
 # All features are normalized, so these work for most faces/cameras.
-SMILE_WIDTH_MIN = 0.38   # mouth width vs inter-ocular width
+SMILE_WIDTH_MIN = 0.60   # mouth width vs inter-ocular width
 MOUTH_OPEN_SURPRISE = 0.20  # mouth openness vs inter-ocular width
 EYE_OPEN_SURPRISE   = 0.27  # average eyelid gap vs eye width
 BROW_RAISE_SURPRISE = 0.20  # eyebrow height vs eye height
