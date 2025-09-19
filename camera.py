@@ -133,18 +133,32 @@ with mp_face_mesh.FaceMesh(
             s_brow  = sum(hist_brow_raise)/len(hist_brow_raise)
 
             # --- Mood rules (simple, readable) ---
-            # SURPRISED: big mouth open + wide eyes + raised brows
-            if (s_mopen > MOUTH_OPEN_SURPRISE and
-                s_eopen > EYE_OPEN_SURPRISE and
-                s_brow  > BROW_RAISE_SURPRISE):
+            # SURPRISED: either full surprise (mouth+eyes+brows) or eyebrow-only
+            if ((s_mopen > MOUTH_OPEN_SURPRISE and
+                 s_eopen > EYE_OPEN_SURPRISE and
+                 s_brow > BROW_RAISE_SURPRISE) or
+                    (s_brow > 0.30)):  # eyebrow-only threshold for surprise
                 mood = "surprised"
 
-            # HAPPY: wide mouth (smile). Allow eyes to be normal or slightly squinty.
+            # HAPPY: wide mouth (smile)
             elif s_smile > SMILE_WIDTH_MIN:
                 mood = "happy"
 
             else:
-                mood = "neutral"
+                # Brow closeness
+                brow_distance = dist(p_rbrow, p_lbrow) / inter_ocular
+
+                # ANGRY: brows lowered + closer together
+                if s_brow < 0.18 and brow_distance < 0.36:
+                    mood = "angry"
+
+                # SAD: mouth not wide + lips not open
+                elif s_smile < 0.42 and s_mopen < 0.14:
+                    mood = "sad"
+
+                else:
+                    mood = "neutral"
+
 
             # --- Visualization ---
             # Mouth line + lip points
