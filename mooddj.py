@@ -1,52 +1,39 @@
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-
-# Spotify credentials
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id="",
-    client_secret="",
-    redirect_uri="http://localhost:8888/callback",
-    scope="user-library-read playlist-read-private"
-))
+import requests
 import mysql.connector
 
+# SoundCloud API setup
+CLIENT_ID = "your_client_id"
+USER_ID = "soundcloud_user_id"
+
+# Fetch liked tracks
+url = f"https://api.soundcloud.com/users/{USER_ID}/likes?client_id={CLIENT_ID}"
+response = requests.get(url)
+data = response.json()
+
+# Connect to MySQL
 db = mysql.connector.connect(
     host="localhost",
     user="root",
     password="yourpassword",
-    database="mooddj"
+    database="mooddj_soundcloud"
 )
-
 cursor = db.cursor()
 
-results = sp.current_user_saved_tracks(limit=10)
-
-for item in results['items']:
-    track = item['track']
-    title = track['name']
-    artist = track['artists'][0]['name']
-    album = track['album']['name']
-    duration_ms = track['duration_ms']
-    spotify_id = track['id']
+for item in data:
+    track = item["track"]
+    title = track["title"]
+    artist = track["user"]["username"]
+    genre = track.get("genre", "Unknown")
+    bpm = track.get("bpm", 0)
+    play_count = track.get("playback_count", 0)
 
     sql = """
-        INSERT INTO songs (spotify_song_id, title, artist, album, duration_ms)
-        VALUES (%s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE title=VALUES(title)
+    INSERT INTO tracks (soundcloud_track_id, title, artist, genre, bpm, play_count)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON DUPLICATE KEY UPDATE play_count = VALUES(play_count)
     """
-    cursor.execute(sql, (spotify_id, title, artist, album, duration_ms))
-    db.commit()
+    cursor.execute(sql, (track["id"], title, artist, genre, bpm, play_count))
 
-    print(f"✅ Added {title} by {artist}")
-
-features = sp.audio_features([spotify_id])[0]
-
-valence = features['valence']
-energy = features['energy']
-tempo = features['tempo']
-
-cursor.execute(
-    "UPDATE songs SET valence=%s, energy=%s, tempo=%s WHERE spotify_song_id=%s",
-    (valence, energy, tempo, spotify_id)
-)
 db.commit()
+cursor.close()
+db.close()
