@@ -34,6 +34,7 @@ L_EYE_DOWN  = 374
 RBROW = 105
 LBROW = 334
 
+# Antonio Test
 # ------------- Smoothing -------------
 WIN = 10  # frames to smooth over
 hist_smile = deque(maxlen=WIN)
