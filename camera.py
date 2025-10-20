@@ -14,11 +14,15 @@ def xy(lmk, wi, hi):
 
 
 # Face Mesh landmark indices (MediaPipe)
-# Mouth
-LM_MOUTH_LEFT = 61
-LM_MOUTH_RIGHT = 291
-LM_LIP_UP = 13
-LM_LIP_DOWN = 14
+# Mouth - Enhanced landmarks for better detection
+LM_MOUTH_LEFT = 61  # Left corner
+LM_MOUTH_RIGHT = 291  # Right corner
+LM_LIP_UP = 13  # Upper lip center
+LM_LIP_DOWN = 14  # Lower lip center
+
+# Additional key mouth points for improved accuracy
+LM_MOUTH_LEFT_INNER = 78  # Left corner inner
+LM_MOUTH_RIGHT_INNER = 308  # Right corner inner
 
 # Eyes
 R_EYE_OUTER = 33
@@ -55,16 +59,10 @@ hist_brow_raise = deque(maxlen=WIN)
 hist_brow_distance = deque(maxlen=WIN)
 
 # ------------- Thresholds (tune if needed) -------------
-SMILE_WIDTH_MIN = 0.60  # mouth width vs inter-ocular width
+SMILE_WIDTH_MIN = 0.54  # mouth width vs inter-ocular width
 MOUTH_OPEN_SURPRISE = 0.20  # mouth openness vs inter-ocular width
 EYE_OPEN_SURPRISE = 0.27  # average eyelid gap vs eye width
 BROW_RAISE_SURPRISE = 0.20  # eyebrow height vs eye height
-
-# Angry thresholds
-BROW_LOWERED_ANGRY = 0.18  # Lowered brows
-BROW_CLOSE_ANGRY = 0.36  # Brows close together
-EYE_SQUINT_ANGRY = 0.22  # Eyes squinting/narrowed
-MOUTH_NEUTRAL_MAX = 0.55  # Mouth not smiling
 
 # ------------- MediaPipe setup -------------
 mp_face_mesh = mp.solutions.face_mesh
@@ -97,10 +95,15 @@ with mp_face_mesh.FaceMesh(
             lm = faces[0].landmark
 
             # --- Key points (pixels) ---
+            # Main mouth points
             p_ml = xy(lm[LM_MOUTH_LEFT], w, h)
             p_mr = xy(lm[LM_MOUTH_RIGHT], w, h)
             p_mu = xy(lm[LM_LIP_UP], w, h)
             p_md = xy(lm[LM_LIP_DOWN], w, h)
+
+            # Additional inner corner points for better accuracy
+            p_ml_inner = xy(lm[LM_MOUTH_LEFT_INNER], w, h)
+            p_mr_inner = xy(lm[LM_MOUTH_RIGHT_INNER], w, h)
 
             p_re_outer = xy(lm[R_EYE_OUTER], w, h)
             p_re_inner = xy(lm[R_EYE_INNER], w, h)
@@ -131,7 +134,12 @@ with mp_face_mesh.FaceMesh(
             eye_width_avg = (re_width + le_width) / 2.0
 
             # --- Features ---
-            mouth_width = dist(p_ml, p_mr) / inter_ocular
+            # Enhanced mouth width - average of outer and inner corners
+            mouth_width_outer = dist(p_ml, p_mr) / inter_ocular
+            mouth_width_inner = dist(p_ml_inner, p_mr_inner) / inter_ocular
+            mouth_width = (mouth_width_outer + mouth_width_inner) / 2.0
+
+            # Mouth openness
             mouth_open = dist(p_mu, p_md) / inter_ocular
 
             re_open = dist(p_re_up, p_re_down) / re_width
@@ -176,9 +184,9 @@ with mp_face_mesh.FaceMesh(
             else:
                 # ANGRY: Requires ALL conditions to be met
                 # Eye squinting + neutral mouth + lowered eyebrows
-                eyes_squinting = s_eopen < 0.20  # Eyes narrowed/squinting (more sensitive)
+                eyes_squinting = s_eopen < 0.23  # Eyes narrowed/squinting (adjusted for glasses)
                 mouth_neutral = s_smile < 0.55 and s_mopen < 0.15  # Not smiling, not wide open
-                brows_lowered = s_brow < 0.24  # Eyebrows lowered below neutral (more sensitive)
+                brows_lowered = s_brow < 0.24  # Eyebrows lowered below neutral
 
                 # Anger if: ALL THREE conditions are met
                 if eyes_squinting and mouth_neutral and brows_lowered:
@@ -192,10 +200,14 @@ with mp_face_mesh.FaceMesh(
                     mood = "neutral"
 
             # --- Visualization ---
-            # Mouth line + lip points
+            # Single improved mouth line
             cv2.line(frame, p_ml, p_mr, (0, 255, 0), 1)
-            for pt in (p_ml, p_mr, p_mu, p_md):
-                cv2.circle(frame, pt, 2, (0, 255, 0), -1)
+
+            # Mouth corner and center points (larger for visibility)
+            cv2.circle(frame, p_ml, 3, (0, 255, 0), -1)
+            cv2.circle(frame, p_mr, 3, (0, 255, 0), -1)
+            cv2.circle(frame, p_mu, 3, (0, 255, 0), -1)
+            cv2.circle(frame, p_md, 3, (0, 255, 0), -1)
 
             # Eye markers
             for pt in (p_re_outer, p_re_inner, p_re_up, p_re_down,
@@ -224,9 +236,9 @@ with mp_face_mesh.FaceMesh(
             # Angry parameters - ALWAYS visible (top-left)
             cv2.rectangle(frame, (8, 8), (320, 155), (0, 0, 0), -1)
             cv2.putText(frame, "ANGRY DETECTION:", (16, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            cv2.putText(frame, f"Eye squint: {s_eopen:.2f} < 0.20",
+            cv2.putText(frame, f"Eye squint: {s_eopen:.2f} < 0.23",
                         (16, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-                        (0, 255, 0) if s_eopen < 0.20 else (0, 255, 255), 1)
+                        (0, 255, 0) if s_eopen < 0.23 else (0, 255, 255), 1)
             cv2.putText(frame, f"Mouth neutral: {s_smile:.2f} < 0.55",
                         (16, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
                         (0, 255, 0) if s_smile < 0.55 else (0, 255, 255), 1)
@@ -243,9 +255,9 @@ with mp_face_mesh.FaceMesh(
             # Happy parameters - ALWAYS visible (left side, below angry)
             cv2.rectangle(frame, (8, 165), (320, 235), (0, 0, 0), -1)
             cv2.putText(frame, "HAPPY DETECTION:", (16, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            cv2.putText(frame, f"Smile width: {s_smile:.2f} > 0.60",
+            cv2.putText(frame, f"Smile width: {s_smile:.2f} > 0.54",
                         (16, 205), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-                        (0, 255, 0) if s_smile > 0.60 else (0, 255, 255), 1)
+                        (0, 255, 0) if s_smile > 0.58 else (0, 255, 255), 1)
             cv2.putText(frame, f"Status: {'HAPPY' if mood == 'happy' else 'Not Happy'}",
                         (16, 225), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                         (0, 255, 0) if mood == "happy" else (100, 100, 100), 1)
@@ -308,7 +320,7 @@ with mp_face_mesh.FaceMesh(
         cv2.rectangle(frame, (8, h - 50), (180, h - 12), (0, 0, 0), -1)
         cv2.putText(frame, f"{mood.upper()}", (16, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        cv2.imshow("Mood DJ - Squinting Anger Detection", frame)
+        cv2.imshow("Mood Detection - Enhanced", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
